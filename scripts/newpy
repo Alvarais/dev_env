@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+DEV_ENV_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+TEMPLATE_DIR="${DEV_ENV_DIR}/python_template"
+
+
+usage() {
+  echo "Uso: newpy <nome-do-projeto> [nome-do-pacote]"
+  echo "Exemplo: newpy cabinet_automation cabinet_automation"
+  echo "Exemplo: newpy my_tool (vai usar my_tool como pacote também)"
+}
+
+# --- args ---
+if [[ ${#} -lt 1 ]]; then
+  usage; exit 1
+fi
+
+PROJECT_NAME="$1"
+PACKAGE_NAME="${2:-$1}"
+
+# Sanitização básica do nome de pacote (python identifier)
+# - troca '-' por '_'
+PACKAGE_NAME="${PACKAGE_NAME//-/_}"
+
+if [[ ! "${PACKAGE_NAME}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+  echo "ERRO: nome de pacote inválido: ${PACKAGE_NAME}"
+  echo "Use algo tipo: meu_projeto, cabinet_automation, etc."
+  exit 2
+fi
+
+DEST_DIR="${HOME}/Projetos/${PROJECT_NAME}"
+
+if [[ ! -d "${TEMPLATE_DIR}" ]]; then
+  echo "ERRO: Template não encontrado em: ${TEMPLATE_DIR}"
+  exit 3
+fi
+
+if [[ -e "${DEST_DIR}" ]]; then
+  echo "ERRO: destino já existe: ${DEST_DIR}"
+  exit 4
+fi
+
+# --- copy template ---
+mkdir -p "$(dirname "${DEST_DIR}")"
+cp -a "${TEMPLATE_DIR}" "${DEST_DIR}"
+
+# limpeza de estado herdado do template (se existir)
+rm -rf "${DEST_DIR}/.venv"
+rm -rf "${DEST_DIR}/src/"*.egg-info
+
+cd "${DEST_DIR}"
+
+# --- rename package folder ---
+if [[ ! -d "src/pkgname" ]]; then
+  echo "ERRO: esperado src/pkgname no template. Ajuste seu template antes."
+  exit 5
+fi
+mv "src/pkgname" "src/${PACKAGE_NAME}"
+
+# --- update pyproject.toml ---
+# troca o name = "pkgname" para o nome do pacote (distribuição)
+# (mantém simples: distribuição == pacote)
+sed -i "s/name = \"pkgname\"/name = \"${PACKAGE_NAME}\"/g" pyproject.toml
+
+# --- update README.md ---
+sed -i "s/python -m pkgname.main/python -m ${PACKAGE_NAME}.main/g" README.md
+sed -i "s/Template Python/${PROJECT_NAME}/g" README.md || true
+
+# --- create venv + editable install ---
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip >/dev/null
+
+# editable install (offline-friendly: usa setuptools do ambiente; se faltar, o pip pode baixar)
+pip install -e . >/dev/null
+
+# quick smoke test
+python -m "${PACKAGE_NAME}"
+echo
+echo "Sucesso! Projeto ${PROJECT_NAME} criado em: ${DEST_DIR}"
+echo "Entrar no projeto: workon ${PROJECT_NAME}"
+echo "Rodar: python -m ${PACKAGE_NAME}"
