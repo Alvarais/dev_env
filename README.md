@@ -17,14 +17,14 @@ evitando retrabalho, conflitos de dependência e decisões repetidas.
 
 ## Estrutura
 
-dev_env/
-├── README.md          (este arquivo)
-├── install.sh         (bootstrap do ambiente)
-├── bash/
-│   └── workon.sh      (função de shell para entrar em projetos)
-├── scripts/
-│   └── newpy          (criação de novos projetos Python)
-└── python_template/   (template base de projetos)
+dev_env/  
+├── README.md          (este arquivo)  
+├── install.sh         (bootstrap do ambiente)  
+├── bash/  
+│   └── workon.sh      (função de shell para entrar em projetos)  
+├── scripts/  
+│   └── newpy          (criação de novos projetos Python)  
+└── python_template/   (template base de projetos)  
 
 ## Instalação em um PC novo
 
