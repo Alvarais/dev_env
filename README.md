@@ -1,47 +1,70 @@
-# dev_env
+dev_env
 
-Ambiente de desenvolvimento Python padronizado e reprodutível.
+Ambiente de desenvolvimento Python padronizado, reprodutível e explícito.
 
-Este repositório define como os projetos Python são criados, organizados e utilizados,
-evitando retrabalho, conflitos de dependência e decisões repetidas.
+Este repositório define como projetos Python são criados, organizados e utilizados,
+evitando retrabalho, conflitos de dependência e decisões repetidas ao longo do tempo.
 
-## Filosofia
+Ele é a fonte da verdade do fluxo de desenvolvimento.
 
-- 1 projeto = 1 pasta
-- 1 projeto = 1 .venv
-- layout src/ sempre
-- projeto instalado em editable (pip install -e .)
-- sem Snap
-- sem conda
-- tudo explícito e reproduzível
+Filosofia
 
-## Estrutura
+1 projeto = 1 pasta
+
+1 projeto = 1 .venv
+
+layout src/ sempre
+
+projeto instalado em modo editable (pip install -e .)
+
+tooling simples, previsível e auditável
+
+nada implícito
+
+nada mágico
+
+Decisões conscientes:
+
+sem Snap
+
+sem conda
+
+sem ambientes globais
+
+sem PYTHONPATH manual
+
+Tudo deve ser explícito e reproduzível.
+
+Estrutura do repositório
 
 dev_env/
-
-├── README.md          (este arquivo)
-
-├── install.sh         (bootstrap do ambiente)
-
+├── README.md
+├── install.sh
 ├── bash/
-
-│   └── workon.sh      (função de shell para entrar em projetos)
-
+│ └── workon.sh
 ├── scripts/
+│ └── newpy
+└── templates/
+└── python/
+└── {{PROJECT_SLUG}}/
+├── pyproject.toml
+├── README.md
+├── src/
+│ └── {{PACKAGE_NAME}}/
+└── tests/
 
-│   └── newpy          (criação de novos projetos Python)
+Instalação em um PC novo
+Pré-requisitos
 
-└── python_template/   (template base de projetos)
+Linux
 
-## Instalação em um PC novo
+Python ≥ 3.10 (instalado pelo sistema)
 
-Pré-requisitos:
-- Linux
-- Python 3.10+ instalado pelo sistema
-- git
-- bash
+git
 
-Passos:
+bash
+
+Passos
 
 git clone <repo> ~/Projetos/dev_env
 cd ~/Projetos/dev_env
@@ -51,73 +74,104 @@ Depois, abra um novo terminal ou rode:
 
 source ~/.bashrc
 
-## Uso diário
-
-### Criar um novo projeto
+Uso diário
+Criar um novo projeto
 
 newpy meu_projeto
 
-Isso cria o projeto em:
+Por padrão, isso cria:
 
 ~/Projetos/meu_projeto
 
 Com:
-- .venv criado
-- projeto instalado em editable
-- estrutura src/
-- pyproject.toml configurado
 
-### Entrar em um projeto e ativar o venv
+.venv criado
+
+projeto instalado em modo editable
+
+layout src/
+
+pyproject.toml configurado
+
+testes básicos (pytest)
+
+placeholders renderizados automaticamente
+
+Também é possível:
+
+newpy meu_projeto --pwd
+newpy meu_projeto --dir /algum/caminho
+newpy meu_projeto --no-venv
+newpy meu_projeto --dry-run
+
+Entrar em um projeto
 
 workon meu_projeto
 
 Isso:
-- entra na pasta do projeto
-- ativa o ambiente virtual local
 
-### Rodar o projeto
+entra na pasta do projeto
 
-python -m meu_projeto.main
+ativa o ambiente virtual local
 
-Ou, se existir __main__.py:
+Rodar o projeto
+
+Se existir __main__.py:
 
 python -m meu_projeto
 
-## Template Python
+Ou explicitamente:
 
-O template usado pelo newpy fica em:
+python -m meu_projeto.main
 
-dev_env/python_template/
+Rodar testes
 
-Ele define:
-- layout do projeto
-- arquivos base
-- padrão de execução
+pytest
 
-O template não é usado diretamente.
-Ele é copiado a cada novo projeto.
+(os testes são instalados via extra [dev] quando definido no template)
 
-## Decisões importantes
+Templates
 
-- Não usar Snap para ferramentas de desenvolvimento
-- Não usar ambientes virtuais globais
-- Não usar PYTHONPATH manual
-- Não misturar versões de Python sem necessidade
+Os templates usados pelo newpy ficam em:
 
-Essas decisões são intencionais.
+dev_env/templates/
 
-## Portabilidade
+Atualmente:
 
-Para replicar este ambiente em outro PC:
+templates/python/ → template base de projetos Python
 
-1. clonar este repositório
-2. rodar install.sh
-3. abrir um novo terminal
+Os templates:
 
-Nada depende de estado oculto.
+não são projetos
 
-## Observação final
+não são usados diretamente
 
-Este repositório é a fonte da verdade do ambiente.
-Se algo mudar no fluxo, muda aqui primeiro.
+são scaffolds parametrizados
 
+são a base de todos os projetos gerados
+
+Adicionar novos templates (pyqt, cli, etc.) é intencionalmente simples.
+
+Portabilidade
+
+Para replicar o ambiente em outro PC:
+
+clonar este repositório
+
+rodar install.sh
+
+abrir um novo terminal
+
+Nada depende de estado oculto ou configuração manual pós-instalação.
+
+Observação final
+
+Este repositório define o fluxo.
+
+Se algo mudar no desenvolvimento:
+
+muda aqui primeiro
+
+depois os projetos seguem
+
+Não o contrário.
