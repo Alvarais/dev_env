@@ -3,82 +3,172 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DEV_ENV_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-TEMPLATE_DIR="${DEV_ENV_DIR}/python_template"
 
+TEMPLATE_ROOT="${DEV_ENV_DIR}/templates"
+DEFAULT_TEMPLATE="python"
+
+# defaults
+TARGET_BASE="${HOME}/Projetos"
+TEMPLATE_NAME="${DEFAULT_TEMPLATE}"
+NO_VENV=0
+NO_GIT=0
+DRY_RUN=0
 
 usage() {
-  echo "Uso: newpy <nome-do-projeto> [nome-do-pacote]"
-  echo "Exemplo: newpy cabinet_automation cabinet_automation"
-  echo "Exemplo: newpy my_tool (vai usar my_tool como pacote também)"
+  cat <<'EOF'
+Uso:
+  newpy <nome-do-projeto> [nome-do-pacote] [opções]
+
+Opções:
+  --dir <path>     Diretório base de destino (override do ~/Projetos)
+  --pwd            Usa o diretório atual como destino base
+  --template <t>   Template (default: python)
+  --no-venv        Não cria .venv
+  --no-git         Não roda git init
+  --dry-run        Mostra ações sem executar
+  -h, --help       Mostra esta ajuda
+
+Exemplos:
+  newpy cabinet_automation cabinet_automation
+  newpy my_tool
+  newpy my_tool --pwd
+  newpy my_tool --dir /tmp
+  newpy my_tool --template python --no-venv
+EOF
 }
 
 # --- args ---
-if [[ ${#} -lt 1 ]]; then
+if [[ $# -lt 1 ]]; then
   usage; exit 1
 fi
 
 PROJECT_NAME="$1"
 PACKAGE_NAME="${2:-$1}"
+shift || true
+shift || true
 
-# Sanitização básica do nome de pacote (python identifier)
-# - troca '-' por '_'
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) TARGET_BASE="$2"; shift 2;;
+    --pwd) TARGET_BASE="$(pwd)"; shift;;
+    --template) TEMPLATE_NAME="$2"; shift 2;;
+    --no-venv) NO_VENV=1; shift;;
+    --no-git) NO_GIT=1; shift;;
+    --dry-run) DRY_RUN=1; shift;;
+    -h|--help) usage; exit 0;;
+    *) echo "Opção desconhecida: $1"; usage; exit 2;;
+  esac
+done
+
+# --- helpers ---
+slugify() {
+  python3 - <<'PY' "$1"
+import re, sys
+s = sys.argv[1].strip().lower()
+s = re.sub(r"[^\w\s-]", "", s)
+s = re.sub(r"[\s-]+", "_", s)
+s = re.sub(r"_+", "_", s)
+print(s)
+PY
+}
+
+render_placeholders_in_file() {
+  local file="$1"
+  python3 - <<'PY' "$file" "$PROJECT_NAME" "$PROJECT_SLUG" "$PACKAGE_NAME" || true
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+pn, ps, pkg = sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    data = p.read_text(encoding="utf-8")
+except Exception:
+    sys.exit(0)
+data = (data
+        .replace("{{PROJECT_NAME}}", pn)
+        .replace("{{PROJECT_SLUG}}", ps)
+        .replace("{{PACKAGE_NAME}}", pkg))
+p.write_text(data, encoding="utf-8")
+PY
+}
+
+has_dev_extra() {
+  [[ -f pyproject.toml ]] || return 1
+  grep -q '^\[project\.optional-dependencies\]' pyproject.toml \
+    && grep -q '^\s*dev\s*=' pyproject.toml
+}
+
+run() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "[dry-run] $*"
+  else
+    eval "$@"
+  fi
+}
+
+# --- sanitize package name ---
 PACKAGE_NAME="${PACKAGE_NAME//-/_}"
-
 if [[ ! "${PACKAGE_NAME}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
   echo "ERRO: nome de pacote inválido: ${PACKAGE_NAME}"
-  echo "Use algo tipo: meu_projeto, cabinet_automation, etc."
   exit 2
 fi
 
-DEST_DIR="${HOME}/Projetos/${PROJECT_NAME}"
+PROJECT_SLUG="$(slugify "${PROJECT_NAME}")"
+TEMPLATE_DIR="${TEMPLATE_ROOT}/${TEMPLATE_NAME}/{{PROJECT_SLUG}}"
+DEST_DIR="${TARGET_BASE}/${PROJECT_NAME}"
 
-if [[ ! -d "${TEMPLATE_DIR}" ]]; then
-  echo "ERRO: Template não encontrado em: ${TEMPLATE_DIR}"
-  exit 3
-fi
+[[ -d "${TEMPLATE_DIR}" ]] || { echo "ERRO: template não encontrado: ${TEMPLATE_DIR}"; exit 3; }
+[[ ! -e "${DEST_DIR}" ]] || { echo "ERRO: destino já existe: ${DEST_DIR}"; exit 4; }
 
-if [[ -e "${DEST_DIR}" ]]; then
-  echo "ERRO: destino já existe: ${DEST_DIR}"
-  exit 4
-fi
+run "mkdir -p \"${DEST_DIR}\""
+run "cp -a \"${TEMPLATE_DIR}/.\" \"${DEST_DIR}/\""
 
-# --- copy template ---
-mkdir -p "$(dirname "${DEST_DIR}")"
-cp -a "${TEMPLATE_DIR}" "${DEST_DIR}"
-
-# limpeza de estado herdado do template (se existir)
-rm -rf "${DEST_DIR}/.venv"
-rm -rf "${DEST_DIR}/src/"*.egg-info
+# limpeza
+run "rm -rf \"${DEST_DIR}/.venv\" || true"
+run "rm -rf \"${DEST_DIR}/src/\"*.egg-info || true"
+run "find \"${DEST_DIR}\" -type d -name \"__pycache__\" -prune -exec rm -rf {} + 2>/dev/null || true"
 
 cd "${DEST_DIR}"
 
-# --- rename package folder ---
-if [[ ! -d "src/pkgname" ]]; then
-  echo "ERRO: esperado src/pkgname no template. Ajuste seu template antes."
+# rename pacote
+if [[ -d "src/{{PACKAGE_NAME}}" ]]; then
+  run "mv \"src/{{PACKAGE_NAME}}\" \"src/${PACKAGE_NAME}\""
+elif [[ -d "src/pkgname" ]]; then
+  run "mv \"src/pkgname\" \"src/${PACKAGE_NAME}\""
+else
+  echo "ERRO: esperado src/{{PACKAGE_NAME}} ou src/pkgname no template"
   exit 5
 fi
-mv "src/pkgname" "src/${PACKAGE_NAME}"
 
-# --- update pyproject.toml ---
-# troca o name = "pkgname" para o nome do pacote (distribuição)
-# (mantém simples: distribuição == pacote)
-sed -i "s/name = \"pkgname\"/name = \"${PACKAGE_NAME}\"/g" pyproject.toml
+# render placeholders
+while IFS= read -r -d '' f; do
+  render_placeholders_in_file "$f"
+done < <(find . -type f \
+  \( -name "*.md" -o -name "*.toml" -o -name "*.txt" -o -name "*.py" -o -name "*.ini" -o -name "*.cfg" -o -name ".env*" -o -name ".gitignore" \) \
+  -print0)
 
-# --- update README.md ---
-sed -i "s/python -m pkgname.main/python -m ${PACKAGE_NAME}.main/g" README.md
-sed -i "s/Template Python/${PROJECT_NAME}/g" README.md || true
+# git
+if [[ $NO_GIT -eq 0 ]]; then
+  run "git init >/dev/null 2>&1 || true"
+fi
 
-# --- create venv + editable install ---
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip >/dev/null
+# venv + install
+if [[ $NO_VENV -eq 0 ]]; then
+  run "python3 -m venv .venv"
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+  run "python -m pip install --upgrade pip -q"
+  if has_dev_extra; then
+    run "pip install -e '.[dev]' -q"
+  else
+    run "pip install -e . -q"
+  fi
+fi
 
-# editable install (offline-friendly: usa setuptools do ambiente; se faltar, o pip pode baixar)
-pip install -e . >/dev/null
+# smoke
+python -c "import ${PACKAGE_NAME}; print('import ok:', ${PACKAGE_NAME}.__name__)" >/dev/null || true
 
-# quick smoke test
-python -m "${PACKAGE_NAME}"
 echo
 echo "Sucesso! Projeto ${PROJECT_NAME} criado em: ${DEST_DIR}"
 echo "Entrar no projeto: workon ${PROJECT_NAME}"
 echo "Rodar: python -m ${PACKAGE_NAME}"
+
