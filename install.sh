@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 echo "Instalando ambiente de desenvolvimento..."
 
-# garantir pastas base
+# garantir pasta base
 mkdir -p "$HOME/Projetos"
 
-# bashrc
-if ! grep -q "dev_env/bash/workon.sh" "$HOME/.bashrc"; then
+BASHRC="$HOME/.bashrc"
+DEV_ENV_DIR="$HOME/Projetos/dev_env"
+
+# evitar duplicar configuração
+if ! grep -q "dev_env/bash/workon.sh" "$BASHRC"; then
   echo "Configurando bashrc..."
   {
     echo ""
     echo "# Dev environment"
-    echo 'source "$HOME/Projetos/dev_env/bash/workon.sh"'
-    echo 'export PATH="$HOME/Projetos/dev_env/scripts:$PATH"'
-  } >> "$HOME/.bashrc"
+    echo "if [ -f \"$DEV_ENV_DIR/bash/workon.sh\" ]; then"
+    echo "  source \"$DEV_ENV_DIR/bash/workon.sh\""
+    echo "fi"
+    echo "export PATH=\"$DEV_ENV_DIR/scripts:\$PATH\""
+  } >> "$BASHRC"
+else
+  echo "bashrc já configurado, nada a fazer."
 fi
 
 echo "Pronto."
 echo "Abra um novo terminal ou rode: source ~/.bashrc"
+
